@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Editar Empleado</title>
+</head>
+<body class="container mt-5">
+    <div class="col-md-6 mx-auto card p-4 shadow">
+        <h3>Editar Empleado: {{ emp.nombre }}</h3>
+        <form method="POST">
+            <div class="mb-3">
+                <label>Nombre:</label>
+                <input type="text" name="nombre" class="form-control" value="{{ emp.nombre }}" required>
+            </div>
+            <div class="mb-3">
+                <label>Tienda:</label>
+                <select name="tienda_id" class="form-select">
+                    {% for t in tiendas %}
+                    <option value="{{ t.id }}" {% if t.id == emp.tienda_id %}selected{% endif %}>{{ t.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="mb-3">
+                <label>Jornada:</label>
+                <select name="tipo_jornada" class="form-select">
+                    <option value="Completa" {% if emp.tipo_jornada == 'Completa' %}selected{% endif %}>Completa</option>
+                    <option value="Parcial" {% if emp.tipo_jornada == 'Parcial' %}selected{% endif %}>Parcial</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label>Horas Extra:</label>
+                <input type="number" name="horas_extra" class="form-control" value="{{ emp.horas_extra }}">
+            </div>
+            <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+            <a href="/empleados" class="btn btn-link">Cancelar</a>
+        </form>
+    </div>
+</body>
+</html>

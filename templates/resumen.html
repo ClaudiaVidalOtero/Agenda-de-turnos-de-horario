@@ -1,0 +1,15 @@
+<h2>Resumen</h2>
+
+<h3>Tiendas</h3>
+<ul>
+{% for t in tiendas %}
+    <li>{{t[1]}}</li>
+{% endfor %}
+</ul>
+
+<h3>Empleados</h3>
+<ul>
+{% for e in empleados %}
+    <li>{{e[1]}} (Tienda {{e[2]}}) - {{e[3]}}</li>
+{% endfor %}
+</ul>

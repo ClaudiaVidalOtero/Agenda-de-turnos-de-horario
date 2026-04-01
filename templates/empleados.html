@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Gestionar Empleados</title>
+</head>
+<body class="container mt-5">
+    <nav class="mb-4"><a href="/" class="btn btn-sm btn-secondary">← Volver al Inicio</a></nav>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card p-4 shadow-sm border-primary">
+                <h4>Nuevo Empleado</h4>
+                <form action="/empleados" method="POST">
+                    <div class="mb-2">
+                        <label>Nombre:</label>
+                        <input type="text" name="nombre" class="form-control" required>
+                    </div>
+                    <div class="mb-2">
+                        <label>Tienda:</label>
+                        <select name="tienda_id" class="form-select" required>
+                            {% for t in tiendas %}<option value="{{ t.id }}">{{ t.nombre }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label>Jornada:</label>
+                        <select name="tipo_jornada" class="form-select">
+                            <option value="Completa">Completa</option>
+                            <option value="Parcial">Parcial</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label>Horas Extra:</label>
+                        <input type="number" name="horas_extra" class="form-control" value="0" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Registrar</button>
+                </form>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <h3>Lista de Personal</h3>
+            <table class="table table-striped shadow-sm">
+                <thead class="table-dark">
+                    <tr><th>Nombre</th><th>Tienda</th><th>Extras</th><th>Acciones</th></tr>
+                </thead>
+                <tbody>
+                    {% for e in empleados %}
+                    <tr>
+                        <td>{{ e.nombre }}</td>
+                        <td>{{ e.tienda_asignada.nombre }}</td>
+                        <td><span class="badge bg-info">+{{ e.horas_extra }}h</span></td>
+                        <td>
+                            <a href="/editar_empleado/{{ e.id }}" class="btn btn-warning btn-sm">Editar</a>
+                            <a href="/eliminar_empleado/{{ e.id }}" class="btn btn-danger btn-sm">Borrar</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
