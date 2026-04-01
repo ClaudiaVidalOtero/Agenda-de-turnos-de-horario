@@ -1,11 +1,12 @@
+# ================= APP.PY COMPLETO ACTUALIZADO =================
+
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
-import pandas as pd
-from io import BytesIO
+from ortools.sat.python import cp_model
 
 app = Flask(__name__)
-app.secret_key = 'clave_secreta_super_segura' # Necesario para mostrar mensajes de error (flash)
+app.secret_key = 'clave_secreta_super_segura'
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'horarios.db')
@@ -13,7 +14,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# --- MODELOS ---
+# ---------------- MODELOS ----------------
 class Configuracion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     horas_completa = db.Column(db.Integer, default=40)
@@ -25,122 +26,141 @@ class Tienda(db.Model):
     nombre = db.Column(db.String(100), nullable=False)
     apertura = db.Column(db.String(10))
     cierre = db.Column(db.String(10))
-    empleados = db.relationship('Empleado', backref='tienda_asignada', lazy=True)
+    min_manana = db.Column(db.Integer, default=1)
+    min_tarde = db.Column(db.Integer, default=1)
 
 class Empleado(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False)
-    tipo_jornada = db.Column(db.String(50)) 
+    tipo_jornada = db.Column(db.String(50))
     horas_extra = db.Column(db.Integer, default=0)
     tienda_id = db.Column(db.Integer, db.ForeignKey('tienda.id'))
 
-with app.app_context():
-    db.create_all()
-    if not Configuracion.query.first():
-        db.session.add(Configuracion(horas_completa=40, horas_parcial=20, max_horas_semanales=48))
-        db.session.commit()
+    preferencia_turno = db.Column(db.String(20), default="indiferente")
+    dia_libre = db.Column(db.Integer, nullable=True)  # 0-6
 
-# --- RUTAS DE CONFIGURACIÓN ---
+# ---------------- OPTIMIZADOR ----------------
+def generar_horarios(empleados, tienda, config):
+    model = cp_model.CpModel()
+
+    dias = range(7)
+    turnos = {"mañana": 4, "tarde": 4}
+
+    x = {}
+    for e in empleados:
+        for d in dias:
+            for t in turnos:
+                x[(e.id, d, t)] = model.NewBoolVar(f"x_{e.id}_{d}_{t}")
+
+    # HARD
+    for d in dias:
+        model.Add(sum(x[(e.id, d, "mañana")] for e in empleados) >= tienda.min_manana)
+        model.Add(sum(x[(e.id, d, "tarde")] for e in empleados) >= tienda.min_tarde)
+
+    for e in empleados:
+        for d in dias:
+            model.Add(sum(x[(e.id, d, t)] for t in turnos) <= 1)
+
+    for e in empleados:
+        max_horas = config.horas_completa if e.tipo_jornada == "Completa" else config.horas_parcial
+        max_horas += e.horas_extra
+        model.Add(sum(x[(e.id, d, t)] * turnos[t] for d in dias for t in turnos) <= max_horas)
+
+    # SOFT
+    penalizaciones = []
+
+    for e in empleados:
+        for d in dias:
+            for t in turnos:
+                if e.preferencia_turno != "indiferente" and e.preferencia_turno != t:
+                    penalizaciones.append(x[(e.id, d, t)] * 3)
+
+        if e.dia_libre is not None:
+            for t in turnos:
+                penalizaciones.append(x[(e.id, e.dia_libre, t)] * 6)
+
+    model.Minimize(sum(penalizaciones))
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = 5
+    status = solver.Solve(model)
+
+    if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+        return None
+
+    resultado = []
+    for e in empleados:
+        for d in dias:
+            for t in turnos:
+                if solver.Value(x[(e.id, d, t)]):
+                    resultado.append((e.nombre, d, t))
+
+    return resultado
+
+# ---------------- RUTAS ----------------
 @app.route('/')
 def index():
-    return render_template('index.html')
+    tiendas = Tienda.query.all()
+    empleados = Empleado.query.all()
+    return render_template('index.html', tiendas=tiendas, empleados=empleados)
 
-@app.route('/configuracion', methods=['GET', 'POST'])
-def configurar():
-    conf = Configuracion.query.first()
-    if request.method == 'POST':
-        conf.horas_completa = int(request.form['horas_completa'])
-        conf.horas_parcial = int(request.form['horas_parcial'])
-        conf.max_horas_semanales = int(request.form['max_horas_semanales'])
-        db.session.commit()
-        flash("Configuración actualizada", "success")
-        return redirect(url_for('configurar'))
-    return render_template('configuracion.html', conf=conf)
-
-# --- RUTAS DE TIENDAS (Gestionar, Editar, Borrar) ---
 @app.route('/tiendas', methods=['GET', 'POST'])
 def gestionar_tiendas():
     if request.method == 'POST':
-        nueva = Tienda(nombre=request.form['nombre'], apertura=request.form['apertura'], cierre=request.form['cierre'])
+        nueva = Tienda(
+            nombre=request.form['nombre'],
+            apertura=request.form['apertura'],
+            cierre=request.form['cierre'],
+            min_manana=int(request.form['min_manana']),
+            min_tarde=int(request.form['min_tarde'])
+        )
         db.session.add(nueva)
         db.session.commit()
         return redirect(url_for('gestionar_tiendas'))
     return render_template('tiendas.html', tiendas=Tienda.query.all())
 
-@app.route('/editar_tienda/<int:id>', methods=['GET', 'POST'])
-def editar_tienda(id):
-    t = Tienda.query.get_or_404(id)
-    if request.method == 'POST':
-        t.nombre = request.form['nombre']
-        t.apertura = request.form['apertura']
-        t.cierre = request.form['cierre']
-        db.session.commit()
-        return redirect(url_for('gestionar_tiendas'))
-    return render_template('editar_tienda.html', tienda=t)
-
-@app.route('/eliminar_tienda/<int:id>')
-def eliminar_tienda(id):
-    db.session.delete(Tienda.query.get_or_404(id))
-    db.session.commit()
-    return redirect(url_for('gestionar_tiendas'))
-
-# --- RUTAS DE EMPLEADOS (Con Validación de Horas Máximas) ---
 @app.route('/empleados', methods=['GET', 'POST'])
 def gestionar_empleados():
-    conf = Configuracion.query.first()
     if request.method == 'POST':
-        nombre = request.form['nombre']
-        tipo = request.form['tipo_jornada']
-        extras = int(request.form.get('horas_extra', 0))
-        tienda_id = request.form['tienda_id']
-        
-        base = conf.horas_completa if tipo == "Completa" else conf.horas_parcial
-        if (base + extras) > conf.max_horas_semanales:
-            flash(f"¡ERROR! El total ({base + extras}h) supera el máximo de {conf.max_horas_semanales}h.", "danger")
-        else:
-            nuevo = Empleado(nombre=nombre, tipo_jornada=tipo, horas_extra=extras, tienda_id=tienda_id)
-            db.session.add(nuevo)
-            db.session.commit()
-            flash("Empleado guardado correctamente", "success")
-            
+        dia_libre = request.form.get('dia_libre')
+        dia_libre = int(dia_libre) if dia_libre != '' else None
+
+        nuevo = Empleado(
+            nombre=request.form['nombre'],
+            tipo_jornada=request.form['tipo_jornada'],
+            horas_extra=int(request.form['horas_extra']),
+            tienda_id=request.form['tienda_id'],
+            preferencia_turno=request.form['preferencia_turno'],
+            dia_libre=dia_libre
+        )
+        db.session.add(nuevo)
+        db.session.commit()
         return redirect(url_for('gestionar_empleados'))
-    
+
     return render_template('empleados.html', empleados=Empleado.query.all(), tiendas=Tienda.query.all())
 
-@app.route('/editar_empleado/<int:id>', methods=['GET', 'POST'])
-def editar_empleado(id):
-    e = Empleado.query.get_or_404(id)
-    conf = Configuracion.query.first()
-    tiendas = Tienda.query.all()
-    if request.method == 'POST':
-        tipo = request.form['tipo_jornada']
-        extras = int(request.form['horas_extra'])
-        base = conf.horas_completa if tipo == "Completa" else conf.horas_parcial
-        
-        if (base + extras) > conf.max_horas_semanales:
-            flash("No se pudo editar: Supera el límite de horas.", "danger")
-        else:
-            e.nombre = request.form['nombre']
-            e.tipo_jornada = tipo
-            e.horas_extra = extras
-            e.tienda_id = request.form['tienda_id']
-            db.session.commit()
-            return redirect(url_for('gestionar_empleados'))
-            
-    return render_template('editar_empleado.html', emp=e, tiendas=tiendas)
+@app.route('/generar', methods=['POST'])
+def generar():
+    tienda_id = request.form['tienda_id']
+    empleados_ids = request.form.getlist('empleados')
 
-@app.route('/eliminar_empleado/<int:id>')
-def eliminar_empleado(id):
-    emp = Empleado.query.get_or_404(id)
-    db.session.delete(emp)
-    db.session.commit()
-    return redirect(url_for('gestionar_empleados'))
+    tienda = Tienda.query.get(tienda_id)
+    empleados = Empleado.query.filter(Empleado.id.in_(empleados_ids)).all()
+    config = Configuracion.query.first()
 
-@app.route('/exportar')
-def exportar():
-    # Lógica de Excel (igual a la anterior, usando Configuracion.query.first())
-    # ...
-    return "Excel Generado" # Simplificado para el ejemplo
+    if len(empleados) < (tienda.min_manana + tienda.min_tarde):
+        return "No hay suficientes empleados"
+
+    resultado = generar_horarios(empleados, tienda, config)
+
+    return {"horario": resultado if resultado else "Sin solución"}
+
+# ---------------- INIT ----------------
+with app.app_context():
+    db.create_all()
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
+

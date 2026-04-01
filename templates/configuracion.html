@@ -6,25 +6,51 @@
 </head>
 <body class="container mt-5">
     <a href="/" class="btn btn-sm btn-secondary mb-3">← Inicio</a>
+
     <div class="card border-dark shadow">
-        <div class="card-header bg-dark text-white text-center"><h2>Ajustes de Jornada</h2></div>
+        <div class="card-header bg-dark text-white text-center">
+            <h2>Ajustes de Jornada</h2>
+        </div>
+
         <div class="card-body">
             <form method="POST">
+
                 <div class="row text-center">
                     <div class="col-md-4 mb-3">
                         <label>Base Jornada Completa (h):</label>
                         <input type="number" name="horas_completa" class="form-control" value="{{ conf.horas_completa }}">
                     </div>
+
                     <div class="col-md-4 mb-3">
                         <label>Base Jornada Parcial (h):</label>
                         <input type="number" name="horas_parcial" class="form-control" value="{{ conf.horas_parcial }}">
                     </div>
+
                     <div class="col-md-4 mb-3">
                         <label class="text-danger fw-bold">Máximo Semanal Total (h):</label>
                         <input type="number" name="max_horas_semanales" class="form-control border-danger" value="{{ conf.max_horas_semanales }}">
                     </div>
                 </div>
-                <button type="submit" class="btn btn-dark btn-lg w-100 mt-3">Guardar Configuración Permanente</button>
+
+                <!-- NUEVO BLOQUE -->
+                <hr>
+                <h5 class="text-center mt-3">Requisitos de cobertura</h5>
+
+                <div class="row text-center">
+                    <div class="col-md-6 mb-3">
+                        <label>Mín empleados turno mañana:</label>
+                        <input type="number" name="min_manana" class="form-control" value="{{ conf.min_empleados_manana }}">
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label>Mín empleados turno tarde:</label>
+                        <input type="number" name="min_tarde" class="form-control" value="{{ conf.min_empleados_tarde }}">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-dark btn-lg w-100 mt-3">
+                    Guardar Configuración Permanente
+                </button>
             </form>
         </div>
     </div>
